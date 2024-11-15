@@ -5,7 +5,7 @@ import { useAppAbility } from '@/plugins/casl/useAppAbility'
 import axios from '@axios'
 import { useGenerateImageVariant } from '@core/composable/useGenerateImageVariant'
 import { themeConfig } from '@themeConfig'
-import { default as authV2MaskDark, default as authV2MaskLight } from '@images/pages/loginbg.png'
+import { default as authV2MaskDark, default as authV2MaskLight } from '@images/pages/ipanema.jpg'
 import avatar1 from '@images/avatars/avatar-1.png'
 import type { UserAbility } from '@/plugins/casl/AppAbility';
 import { requiredValidator } from '@validators'
