@@ -8,7 +8,7 @@ const currentToken = localStorage.getItem('accessToken')
 
 <template>
   <VRow class="match-height">
-    <iframe :src="'https://chlg.retool.com/embedded/public/8d53c06f-ce62-4a08-9822-4f596d827c5e?access_token=' + currentToken" frameborder="0"></iframe>
+    <iframe :src="'https://chlg.retool.com/embedded/public/82a2c008-5bda-4aba-91ea-31f025a30322?access_token=' + currentToken" frameborder="0"></iframe>
   </VRow>
 </template>
 
