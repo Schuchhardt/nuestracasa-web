@@ -2,9 +2,8 @@
 import { VForm } from 'vuetify/components/VForm'
 import type { LoginResponse } from '@/@fake-db/types'
 import { useAppAbility } from '@/plugins/casl/useAppAbility'
-import axios from '@axios'
+import axios,{ AxiosError } from 'axios'
 import { useGenerateImageVariant } from '@core/composable/useGenerateImageVariant'
-import { themeConfig } from '@themeConfig'
 import { default as authV2MaskDark, default as authV2MaskLight } from '@images/pages/ipanema.jpg'
 import avatar1 from '@images/avatars/avatar-1.png'
 import type { UserAbility } from '@/plugins/casl/AppAbility';
@@ -19,10 +18,19 @@ const router = useRouter()
 
 const ability = useAppAbility()
 
-const errors = ref<Record<string, string | undefined>>({
-  email: undefined,
-  password: undefined,
-})
+const errorMessages = {
+  'USER_NOT_FOUND': 'Usuario no encontrado.',
+  'PASSWORD_NOT_MATCH': 'Contraseña incorrecta.',
+  'USER_NO_MODULES': 'Usuario no tiene acceso a ningún módulo.',
+  'DEFAULT': 'Los datos ingresados son incorrectos.'
+} as const
+
+interface ErrorResponse {
+  code: "USER_NOT_FOUND" | "PASSWORD_NOT_MATCH" | "USER_NO_MODULES" | "DEFAULT"
+  message: string
+  // Agrega otros campos que pueda tener tu respuesta de error
+}
+const errorDescription = ref('')
 
 const refVForm = ref<VForm>()
 const email = ref('')
@@ -41,51 +49,92 @@ if (route.query.logout == '1') {
 
 // check on mount if user is already logged in
 if (localStorage.getItem('accessToken')) {
-  const userData = JSON.parse(localStorage.getItem('userData') || '{}')
-  if (userData.userType == "admin") {
-    router.replace(route.query.to ? String(route.query.to) : '/dashboards/admin')
-  } else {
-    if (userData.userType == "customer") {
-      router.replace(route.query.to ? String(route.query.to) : '/dashboards/customer-analytics')
-    } else {
-      router.replace(route.query.to ? String(route.query.to) : '/dashboards/home')
+  // call get user profile api to check if token is valid
+  axios.get<LoginResponse>(process.env.API_URL+'/profile', {
+    headers: {
+      Authorization: 'Bearer ' + localStorage.getItem('accessToken')
     }
   }
+  )
+    .then(r => {
+      if (!r.data?.auth) {
+        console.error('Login failed:', r)
+        return
+      }
+      const { auth: accessToken, user: userData } = r.data
+      localStorage.setItem('userData', JSON.stringify({...userData, avatar: avatar1}))
+      localStorage.setItem('accessToken', accessToken) 
+      ability.update(JSON.parse(localStorage.getItem('userAbilities') || '[]'))
+      router.replace(route.query.to ? String(route.query.to) : '/dashboards/admin')
+    })
+    .catch(e => {
+      console.error(e)
+    })
 }
 
-const login = () => {
+const handleLoginError = (error: AxiosError<ErrorResponse>) => {
+  showErrors.value = true
+  isLoading.value = false
+
+  // Verifica si el error tiene una respuesta del servidor
+  if (error.response?.data?.code) {
+    const errorKey = error.response.data.code as keyof typeof errorMessages
+    errorDescription.value = errorMessages[errorKey] || errorMessages.DEFAULT
+  } else {
+    // Manejo de errores de red u otros errores
+    errorDescription.value = 'Error de conexión. Por favor, intente nuevamente.'
+  }
+
+  console.log('Login error:', error)
+}
+
+const login = async () => {
   const userAbilities: UserAbility[] = [
       {
         action: 'manage',
         subject: 'all',
       }
   ]
-  isLoading.value = true
-  axios.post<LoginResponse>(process.env.API_URL+'/login', { email: email.value, password: password.value })
-    .then(r => {
-      const { auth: accessToken, user: userData } = r.data
-      showErrors.value = false
-      localStorage.setItem('userAbilities', JSON.stringify(userAbilities))
-      ability.update(userAbilities)
+  try {
+    isLoading.value = true
+    showErrors.value = false
 
-      localStorage.setItem('userData', JSON.stringify({...userData, avatar: avatar1}))
-      localStorage.setItem('accessToken', accessToken) 
-      isLoading.value = false
-      
-      // Redirect to `to` query if exist or redirect to index route
-      // if (userData.userType == "admin") {
-      //   router.replace(route.query.to ? String(route.query.to) : '/dashboards/admin')
-      // } else {
-      //     router.replace(route.query.to ? String(route.query.to) : '/dashboards/home')
-      // }
-      router.replace(route.query.to ? String(route.query.to) : '/dashboards/admin')
-    })
-    .catch(e => {
-      showErrors.value = true
-      isLoading.value = false
-      console.error(e)
-    })
+    const response = await axios.post<LoginResponse>(
+      `${process.env.API_URL}/login`,
+      { 
+        email: email.value, 
+        password: password.value 
+      }
+    )
+
+    // Validación de la respuesta
+    if (!response?.data?.auth) {
+      throw new Error('Login failed: Invalid response format')
+    }
+
+    const { auth: accessToken, user: userData, login_iframe_url } = response.data
+
+    // Guardar datos en localStorage
+    localStorage.setItem('userData', JSON.stringify({...userData, avatar: avatar1}))
+    localStorage.setItem('accessToken', accessToken)
+    localStorage.setItem('userAbilities', JSON.stringify(userAbilities))
+    localStorage.setItem('userDefaultApp', login_iframe_url)
+    
+    // Actualizar ability
+    ability.update(userAbilities)
+
+    isLoading.value = false
+    
+    router.replace(route.query.to ? String(route.query.to) : '/dashboards/admin')
+    // Retornar los datos por si se necesitan en el componente
+    return { accessToken, userData }
+
+  } catch (error) {
+    handleLoginError(error as AxiosError<ErrorResponse>)
+    throw error // Re-lanzar el error para manejo adicional si es necesario
+  }
 }
+
 
 const onSubmit = () => {
 
@@ -99,16 +148,6 @@ const onSubmit = () => {
 
 <template>
   <div>
-    <!-- Title and Logo -->
-    <!--
-      <div class="auth-logo d-flex align-start gap-x-3">
-      <VNodeRenderer :nodes="themeConfig.app.logo" />
-
-      <h1 class="font-weight-medium leading-normal text-2xl">
-      {{ themeConfig.app.title }}
-      </h1>
-      </div>
-    -->
 
     <VRow
       no-gutters
@@ -116,7 +155,7 @@ const onSubmit = () => {
     >
       <VCol
         md="8"
-        class="d-none d-md-flex align-center justify-center position-relative"
+        class="d-none d-md-flex align-center justify-center position-relative bg-black"
       >
         <div class="d-flex align-center justify-center w-100 pa-0 pe-0">
           <VImg
@@ -155,7 +194,7 @@ const onSubmit = () => {
               variant="tonal"
             >
               <p class="text-caption mb-0">
-                <strong>Los datos ingresados son incorrectos.</strong>
+                <strong>{{ errorDescription }}</strong>
               </p>
             </VAlert>
           </VCardText>
@@ -184,14 +223,14 @@ const onSubmit = () => {
                     :rules="[requiredValidator]"
                   />
 
-                  <div class="d-flex align-center flex-wrap justify-space-between mt-1 mb-4">
+                  <!-- <div class="d-flex align-center flex-wrap justify-space-between mt-1 mb-4">
                     <RouterLink
                       class="text-primary text-center ms-2 mb-1"
                       :to="{ name: 'pages-authentication-forgot-password-v2' }"
                     >
                       ¿Olvidaste tu contraseña?
                     </RouterLink>
-                  </div>
+                  </div> -->
 
                   <VBtn
                     block
@@ -202,19 +241,6 @@ const onSubmit = () => {
                   </VBtn>
                 </VCol>
 
-                <!-- create account -->
-                <!-- <VCol
-                  cols="12"
-                  class="text-center text-base"
-                >
-                  <span>No tienes cuenta?</span>
-                  <RouterLink
-                    class="text-primary ms-2"
-                    :to="{ name: 'pages-authentication-register-v2' }"
-                  >
-                    Crear tu cuenta
-                  </RouterLink>
-                </VCol> -->
               </VRow>
             </VForm>
           </VCardText>

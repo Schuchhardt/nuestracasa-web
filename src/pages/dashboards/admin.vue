@@ -2,13 +2,13 @@
 
 //set layout as none
 
-const currentToken = localStorage.getItem('accessToken')
+const userDefaultApp = localStorage.getItem('userDefaultApp') as string
 
 </script>
 
 <template>
   <VRow class="match-height">
-    <iframe :src="'https://chlg.retool.com/embedded/public/82a2c008-5bda-4aba-91ea-31f025a30322?access_token=' + currentToken" frameborder="0"></iframe>
+    <iframe :src="userDefaultApp"></iframe>
   </VRow>
 </template>
 

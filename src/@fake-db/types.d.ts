@@ -173,6 +173,7 @@ export interface UserOut {
 export interface LoginResponse {
   auth: string
   user: AuthUserOut
+  login_iframe_url: string
   userAbilities: UserAbility[]
 }
 
